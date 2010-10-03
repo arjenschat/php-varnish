@@ -55,7 +55,7 @@ function wpv_admin_menu() {
 
 /** admin page hook */
 function wpv_admin_page(){
-    include dirname(__FILE__).'/wordpress-plugin/wordpress-admin.php';
+    include dirname(__FILE__).'/php-varnish/wordpress-admin.php';
 }
 
 
@@ -169,7 +169,7 @@ function wpv_purge_urls( array $urls ){
 /**
  * Collect URLs to purge relating to a post
  */
-function wpv_edit_post_action( $postid ){
+function wpv_edit_post_action( $postid, $comment = false ){
     if( ! $postid ){
         // I don't know why this would be empty, but it sometimes is
         return;
@@ -180,26 +180,36 @@ function wpv_edit_post_action( $postid ){
         trigger_error('Failed to get permalink path from post with id '.var_export($postid,1), E_USER_NOTICE);
         return;
     }
-    // always purge all feeds
-    $wpv_to_purge['^/feed'] = true;
     // the actual post page, and any extensions thereof
     $wpv_to_purge['^'.$uri.'?'] = true;
-    // to purge all archives and index pages we will purge all sub paths absolutely
-    $bits = preg_split( '!/!', $uri, -1, PREG_SPLIT_NO_EMPTY );
-    while( array_pop($bits) ){
-        $path = '^/'.implode('/',$bits).'/?$';
-        $wpv_to_purge[$path] = true;
-    }
-    // purge pop up comments?
-    // '\\?comments_popup='.$postid; // <- untested
-    // tag and category page listings
-    foreach( get_taxonomies() as $t ){
-        $terms = get_the_terms( $postid, $t);
-        if( $terms ){
-            foreach( $terms as $term ){
-                $uri = get_term_link( $term, $t) and
-                $uri = parse_url( $uri, PHP_URL_PATH ) and
-                $wpv_to_purge['^'.$uri.'?'] = true;
+
+
+    // purge sub pages, feed and taxomonies when it is not a comments
+    if($comment == false){
+        // always purge all feeds
+        $wpv_to_purge['^/feed'] = true;
+        // to purge all archives and index pages we will purge all sub paths absolutely
+        $bits = preg_split( '!/!', $uri, -1, PREG_SPLIT_NO_EMPTY );
+        while( array_pop($bits) ){
+            // rebuild the post page
+            $path = '^/'.implode('/',$bits).'/?$';
+            $wpv_to_purge[$path] = true;
+            // rebuild all the paginated pages
+            $path = '^/'.implode('/',$bits).'/page/.*';
+            $wpv_to_purge[$path] = true;
+
+        }
+        // purge pop up comments?
+        // '\\?comments_popup='.$postid; // <- untested
+        // tag and category page listings
+        foreach( get_taxonomies() as $t ){
+            $terms = get_the_terms( $postid, $t);
+            if( $terms ){
+                foreach( $terms as $term ){
+                    $uri = get_term_link( $term, $t) and
+                    $uri = parse_url( $uri, PHP_URL_PATH ) and
+                    $wpv_to_purge['^'.$uri.'?'] = true;
+                }
             }
         }
     }
@@ -221,7 +231,7 @@ function wpv_edit_comment_action( $commentid ){
         return;
     }
     // purge post that comment is on
-    wpv_edit_post_action( $post_id );
+    wpv_edit_post_action( $post_id, true );
 }
 
 
@@ -241,7 +251,7 @@ function wpv_purge_on_shutdown(){
 
 if( get_option('wpv_enabled') ){
     // invoke purge actions when posts and comments are edited
-    add_action( 'edit_post',         'wpv_edit_post_action',    99, 1 );
+    add_action( 'publish_post',      'wpv_edit_post_action',    99, 1 );
     add_action( 'deleted_post',      'wpv_edit_post_action',    99, 1 );
     add_action( 'comment_post',      'wpv_edit_comment_action', 99, 1 );
     add_action( 'edit_comment',      'wpv_edit_comment_action', 99, 1 );

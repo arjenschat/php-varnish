@@ -83,7 +83,16 @@ class VarnishAdminSocket {
         stream_set_timeout( $this->fp, $timeout );
         // connecting should give us the varnishadm banner with a 200 code
         $banner = $this->read( $code );
-        if( $code !== 200 ){
+        if($code == 107){
+        	$challenge = substr($banner, 0, 32);
+        	
+					// change you secret 
+					// TODO: this should be moved to the class __construct
+					$secret="";
+        	$hash2= hash('sha256', $challenge."\n".$secret.$challenge."\n");
+	       	$r=$this->command("auth ".$hash2, $code);
+        }
+        elseif( $code !== 200 ){
             throw new Exception( sprintf('Bad response from varnishadm on %s:%s', $this->host, $this->port));
         }
         return $banner;
