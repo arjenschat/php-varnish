@@ -13,14 +13,14 @@ sub vcl_recv {
 	set req.http.X-Forwarded-For = client.ip;
 	
 	# logged in users must always pass
-	if( req.url ~ "^/wp-(login|admin)" || req.http.Cookie ~ "wordpress_logged_in_" ){
+	if( req.url ~ "^/[^?]+/wp-(login|admin)" || req.url ~ "^/wp-(login|admin)" || req.http.Cookie ~ "wordpress_logged_in_" ){
 	    return (pass);
 	}
        
-        # don't cache search results
-        if( req.url ~ "\?s=" ){
-            return (pass);
-        }
+	# don't cache search results
+	if( req.url ~ "\?s=" ){
+	    return (pass);
+	}
 
 	# always pass through posted requests and those with basic auth
 	if ( req.request == "POST" || req.http.Authorization ) {
@@ -35,6 +35,8 @@ sub vcl_recv {
 
 
 sub vcl_fetch {
+	# Serve items up to half an hour past their expire time
+	set beresp.grace = 5m;
 
 	# remove some headers we never want to see
 	unset beresp.http.Server;
@@ -60,10 +62,10 @@ sub vcl_fetch {
 		return (pass);
 	}
 
-        # don't cache search results
-        if( req.url ~ "\?s=" ){
-            return (pass);
-        }
+	# don't cache search results
+	if( req.url ~ "\?s=" ){
+	    return (pass);
+	}
 	
 	# else ok to cache the response
 	set beresp.ttl = 24h;
@@ -102,3 +104,10 @@ sub vcl_hash {
     }
     return (hash);
 }   
+
+sub vcl_error {
+    if (obj.status == 503 && req.restarts < 2) {
+        set obj.http.X-Restarts = req.restarts;
+        restart;
+    }
+}
